@@ -1,0 +1,61 @@
+﻿@page "/order-requests"
+
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="10">
+    @foreach (var order in orders)
+    {
+        <MudPaper Elevation="10">
+            <MudStack Row="true" Spacing="15" Class="m-4">
+                <MudText>@string.Join(", ", order.Items.Select(i => $"{i.Quantity}. {i.ItemName}")) Request from @order.RequestedBy</MudText>
+                    <MudButton OnClick="()=>OnApprove(order)">Approve</MudButton>
+                    <MudButton OnClick="()=>OnReject(order)">Reject</MudButton>
+                </MudStack>
+            </MudPaper>
+    }
+</MudStack>
+
+@code {
+    private List<Order> orders;
+
+    [CascadingParameter] private GlobalState _globalState { get; set; }
+
+    protected override void OnInitialized()
+    {
+        orders = OrderService.GetAll();
+    }
+
+    void OnApprove(Order order)
+    {
+        try
+        {
+            try
+            {
+                foreach (var item in order.Items)
+                {
+                    var prevQuantity = InventoryService.GetAll(_globalState.CurrentUser.Id).First(i => i.Id == item.Id).Quantity;
+
+                    InventoryService.Update(_globalState.CurrentUser.Id, item.Id, item.ItemName, prevQuantity - item.Quantity);
+                    InventoryHistoryService.Create(_globalState.CurrentUser.Id, item.ItemName, item.Quantity, _globalState.CurrentUser.Username, order.RequestedBy);
+                }
+            }
+            catch
+            {
+            }
+
+            orders = OrderService.Delete(order.Id);
+            Snackbar.Add("Successfully approved", Severity.Success);
+
+            StateHasChanged();
+        }
+        catch (Exception e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+
+    void OnReject(Order order)
+    {
+        OrderService.Delete(order.Id);
+    }
+}

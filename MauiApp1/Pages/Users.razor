@@ -1,0 +1,138 @@
+﻿@page "/users"
+
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<nav class="navbar navbar-light bg-light justify-content-between">
+    <h1 class="navbar-brand mb-0 h1">Users</h1>
+    <button class="btn btn-primary" type="button" @onclick="OpenAddUserDialog">
+        <span class="oi oi-plus" /> Add
+    </button>
+</nav>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Created At</th>
+            <th>Created By</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in _users)
+        {
+            <tr>
+                <td>@user.Username</td>
+                <td>@user.Role.ToString()</td>
+                <td>@user.CreatedAt.ToString("MMM dd, yyyy h:mm tt")</td>
+                <td>
+                    @{
+                        var creator = UsersService.GetById(user.CreatedBy);
+                        <span>@(creator == null ? "system" : creator.Username)</span>
+                    }
+                </td>
+                <td>
+                    <button disabled="@(_globalState.CurrentUser != null ? _globalState.CurrentUser.Id == user.Id : false)"
+                            class="btn btn-outline-danger" type="button" @onclick="()=>OpenDeleteUserDialog(user)">
+                        <span class="oi oi-delete" /> Delete
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [CascadingParameter]
+    private GlobalState _globalState { get; set; }
+    private List<User> _users { get; set; }
+    private string _deleteUserErrorMessage { get; set; }
+    private User _deleteUser { get; set; }
+    private AddUser _addUser = new();
+
+    protected override void OnInitialized()
+    {
+        _users = UsersService.GetAll();
+    }
+
+    async private Task OpenAddUserDialog()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var parameters = new DialogParameters { ["addUser"] = _addUser };
+
+        var dialog = await DialogService.ShowAsync<AddUserDialog>("Add User", parameters, options);
+        var result = await dialog.Result;
+
+        OnAddUserDialogClose(result.Cancelled);
+
+        _addUser = new();
+    }
+
+    private void OnAddUserDialogClose(bool isCancel)
+    {
+        if (isCancel)
+        {
+            return;
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_addUser.Username) || string.IsNullOrWhiteSpace(_addUser.Password))
+            {
+                throw new Exception("Username and password is required");
+            }
+
+            if (_addUser.Role == Role.Admin)
+            {
+                var adminCount = UsersService.GetAll().Where(u => u.Role == Role.Admin).Count();
+                if (adminCount >= 2)
+                    throw new Exception("Only 2 admins allowed");
+            }
+
+            _users = UsersService.Create(_globalState.CurrentUser.Id, _addUser.Username, _addUser.Username, _addUser.Role);
+        }
+        catch (Exception e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+
+    async private Task OpenDeleteUserDialog(User user)
+    {
+        _deleteUser = user;
+        var parameters = new DialogParameters();
+        parameters.Add("ContentText", "Do you really want to delete this user? This process cannot be undone.");
+        parameters.Add("ButtonText", "Delete");
+        parameters.Add("Color", Color.Error);
+
+        var options = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
+
+        var dialog = await DialogService.ShowAsync<DeleteDialog>("Delete", parameters, options);
+
+        var result = await dialog.Result;
+
+        OnDeleteUserDialogClose(result.Cancelled);
+    }
+
+    private void OnDeleteUserDialogClose(bool isCancel)
+    {
+        if (isCancel)
+        {
+            _deleteUser = null;
+        }
+        else
+        {
+            try
+            {
+                _deleteUserErrorMessage = "";
+                _users = UsersService.Delete(_deleteUser.Id);
+                _deleteUser = null;
+            }
+            catch (Exception e)
+            {
+                _deleteUserErrorMessage = e.Message;
+            }
+        }
+    }
+}

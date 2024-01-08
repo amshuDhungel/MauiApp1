@@ -1,0 +1,86 @@
+﻿@page "/login"
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+@using System.Text.RegularExpressions
+@using System.ComponentModel.DataAnnotations
+
+<center>
+    <h1>Please Login</h1>
+    <MudPaper Class="pa-4" Width="50%">
+        <MudForm @ref="form" @bind-IsValid="@success" @bind-Errors="@errors">
+            <MudTextField @bind-Value="_username" Label="Username" Required="true" RequiredError="User name is required!" />
+            <MudTextField @bind-Value="_password" Label="Password" Required="true" RequiredError="Password is required!" InputType="InputType.Password" />
+        </MudForm>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="py-2 px-5 m-4" DisableElevation="true" OnClick="LoginHandler">Login</MudButton>
+    </MudPaper>
+</center>
+
+
+@code {
+    [CascadingParameter]
+    private GlobalState _globalState { get; set; }
+    private string _username { get; set; }
+    private string _password { get; set; }
+    private string passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+    private bool showPassword = false;
+    private InputType passwordInput;
+    bool success;
+    string[] errors = { };
+    MudForm form;
+
+    private void togglePassword()
+    {
+        if (showPassword)
+        {
+            showPassword = false;
+            passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+            passwordInput = InputType.Password;
+        }
+        else
+        {
+            showPassword = true;
+            passwordInputIcon = Icons.Material.Filled.Visibility;
+            passwordInput = InputType.Text;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            // checking user and navigating
+
+            //var user = UsersService.Login(UsersService.SeedUsername, UsersService.SeedPassword);
+            //_showDefaultCredentials = user.HasInitialPassword;
+            //_showDefaultCredentials = false;
+        }
+        catch { }
+
+        // _globalState.CurrentUser = null;
+        //_errorMessage = "";
+    }
+
+    async private Task LoginHandler()
+    {
+        try
+        {
+            await form.Validate();
+
+            if (!form.IsValid) return;
+
+            var user = UsersService.Login(_username, _password);
+
+            _globalState.CurrentUser = user;
+
+            if (_globalState.CurrentUser != null)
+            {
+                NavManager.NavigateTo(_globalState.CurrentUser.HasInitialPassword ? "/change-password" : "/");
+            }
+        }
+        catch (Exception e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+}

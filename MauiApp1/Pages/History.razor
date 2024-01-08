@@ -1,0 +1,97 @@
+﻿@page "/history"
+
+@if (items.Count == 0)
+{
+    <center>
+        //todo: design no history page
+        <h1>No History</h1>
+    </center>
+}
+else
+{
+    <MudTabs Elevation="4" Rounded="true" Centered="true" Color="@Color.Primary" Class="mt-4">
+        <MudTabPanel Text="Grid">
+            <MudDataGrid T="InventoryHistory" Items="@items" Sortable="true" QuickFilter="@FilterString" Bordered="true" Dense="true">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Inventory Log</MudText>
+                    <MudSpacer />
+                    <MudTextField @bind-Value="searchString" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+                </ToolBarContent>
+                <Columns>
+                    <Column T="InventoryHistory" Field="ItemName" Title="Item" IsEditable="false" />
+                    <Column T="InventoryHistory" Field="Quantity" Title="Quantity" IsEditable="true" />
+                    <Column T="InventoryHistory" Field="ApprovedBy" Title="Approved By" IsEditable="true" />
+                    <Column T="InventoryHistory" Field="TakenBy" Title="Taken By" IsEditable="true" />
+                    <Column T="InventoryHistory" Field="OutDate" Title="Taken On" IsEditable="true" >
+                        <CellTemplate>
+                            <MudText>@((context.OutDate).ToString("MMM dd, yyyy"))</MudText>
+                        </CellTemplate>
+                    </Column>
+                </Columns>
+                <PagerContent>
+                    <MudDataGridPager T="InventoryHistory" />
+                </PagerContent>
+            </MudDataGrid>
+        </MudTabPanel>
+        <MudTabPanel Text="Graph">
+            <MudChart ChartType="ChartType.Bar" ChartOptions="options" ChartSeries="@charts" @bind-SelectedIndex="Index" XAxisLabels="@XAxisLabels" Width="100%" Height="350px"></MudChart>
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    [CascadingParameter]
+    private GlobalState _globalState { get; set; }
+
+    string itemName;
+    int quantity;
+    DateTime date;
+    TimeSpan time;
+    string takenBy;
+    bool isApproved;
+    User staffMember;
+
+    private ChartOptions options = new();
+
+    List<InventoryHistory> items;
+    List<User> admins;
+
+    private string searchString = "";
+
+    private int Index = -1; //default value cannot be 0 -> first selectedindex is 0.
+
+    private string[] XAxisLabels;
+
+    private List<ChartSeries> charts;
+
+    private bool FilterString(InventoryHistory element)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.ItemName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+    protected override void OnInitialized()
+    {
+      
+        admins = UsersService.GetAll().Where(u => u.Role == Role.Admin).ToList();
+
+        items = InventoryHistoryService.GetAll(_globalState.CurrentUser.Id);
+
+        var allItems = items.GroupBy(i => i.ItemName);
+
+        XAxisLabels = new string[] { };
+        //items.GroupBy(i=>i.OutDate.DayOfWeek).Select(i => i.First().OutDate.Month.ToString()).ToArray();
+
+        charts = allItems.Select(g => new ChartSeries
+            {
+                Name = g.Key,
+                Data = g.Select(item => Convert.ToDouble(item.Quantity)).ToArray()
+            }).ToList();
+
+        //options.InterpolationOption = InterpolationOption.NaturalSpline;
+        options.YAxisTicks = 10;
+    }
+}

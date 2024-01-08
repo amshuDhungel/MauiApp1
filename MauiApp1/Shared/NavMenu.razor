@@ -1,0 +1,67 @@
+﻿<div class='@(_collapseNavMenu ? "collapse" : "")' @onclick="ToggleNavMenu">
+    <nav class="flex-column">
+        <div class="nav-item px-3"><h5 class="text-light">Welcome <strong>@Username</strong>!</h5></div>
+        @if (UserRole == Role.Admin)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="users">
+                    <span class="oi oi-person" /> Users
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="inventory">
+                    <span class="oi oi-list-rich" /> Coffee Warehouse
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="order-requests">
+                    <span class="oi oi-list-rich" /> Order Requests
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="history">
+                    <span class="oi oi-shield" /> History
+                </NavLink>
+            </div>
+        }
+        else
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="order-items">
+                    <span class="oi oi-copywriting" /> Order Items
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="my-items">
+                    <span class="oi oi-copywriting" /> My Items
+                </NavLink>
+            </div>
+        }
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="change-password">
+                <span class="oi oi-key" /> Change Password
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link text-danger" role="button" @onclick="LogoutHandler">
+                <span class="oi oi-account-logout" /> Logout
+            </NavLink>
+        </div>
+    </nav>
+</div>
+
+@code {
+    [Parameter]
+    public string Username { get; set; }
+    [Parameter]
+    public Role UserRole { get; set; }
+    [Parameter]
+    public EventCallback LogoutHandler { get; set; }
+
+    private bool _collapseNavMenu { get; set; } = false;
+
+    private void ToggleNavMenu()
+    {
+        _collapseNavMenu = !_collapseNavMenu;
+    }
+}

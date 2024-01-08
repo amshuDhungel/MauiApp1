@@ -1,0 +1,84 @@
+﻿@page "/order-items"
+
+@inject ISnackbar Snackbar
+
+<MudDataGrid Hover="true" Elevation="5" Bordered="true" T="InventoryItem" Items="@_items" Sortable="true" Filterable="true" QuickFilter="@FilterString">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">Inventory</MudText>
+        <MudSpacer />
+        <MudButton Disabled="@requestDisabled" Color="@Color.Success" OnClick="onRequest">Request Items</MudButton>
+        <MudSpacer />
+        <MudTextField Variant="Variant.Outlined" Margin="Margin.Dense" @bind-Value="searchString" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+    </ToolBarContent>
+    <Columns>
+        <Column T="InventoryItem" Field="ItemName" Title="Item" />
+        <Column T="InventoryItem" Field="Quantity" Title="Quantity">
+            <CellTemplate>
+                <input type="number" min="0" value="@context.Item.Quantity" placeholder="quantity" @onchange="(a)=>onQuantityChange(a, context)" />
+            </CellTemplate>
+        </Column>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="InventoryItem" />
+    </PagerContent>
+</MudDataGrid>
+
+@code {
+    private List<InventoryItem> _items { get; set; }
+    private bool requestDisabled { get; set; } = true;
+    private string searchString = "";
+
+    [CascadingParameter] private GlobalState _globalState { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _items = InventoryService.GetAll(_globalState.CurrentUser.Id).Select(i => new InventoryItem { Id = i.Id, ItemName = i.ItemName, Quantity = 0 }).ToList();
+    }
+
+    private bool FilterString(InventoryItem element)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.ItemName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+    private void onQuantityChange(ChangeEventArgs args, CellContext<InventoryItem> context)
+    {
+        var val = int.Parse(args.Value.ToString());
+        context.Item.Quantity = val;
+        requestDisabled = _items.All(i => i.Quantity == 0);
+    }
+
+    private bool readOnly
+    {
+        get
+        => !(DateTime.Now.TimeOfDay < new TimeSpan(9, 0, 0) ||
+       DateTime.Now.TimeOfDay > new TimeSpan(16, 0, 0) ||
+           DateTime.Now.DayOfWeek == DayOfWeek.Saturday ||
+           DateTime.Now.DayOfWeek == DayOfWeek.Sunday);
+    }
+
+    private void onRequest()
+    {
+        try
+        {
+            if (readOnly)
+            {
+                throw new Exception("The request can only be done between 9 am to 4 pm. Monday to Friday");
+            }
+            OrderService.Create(_globalState.CurrentUser.Username, _items.Where(i => i.Quantity > 0).ToList());
+
+            Snackbar.Add("Requested Successfully", Severity.Success);
+
+            //reset quantity after requesting
+            _items.ForEach(i => i.Quantity = 0);
+            StateHasChanged();
+        }
+        catch (Exception e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+}

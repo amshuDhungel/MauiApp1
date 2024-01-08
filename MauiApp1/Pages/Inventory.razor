@@ -1,0 +1,202 @@
+﻿@page "/inventory"
+
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudDataGrid T="InventoryItem" Items="@_items" Sortable="true" Filterable="true" QuickFilter="@FilterString"
+             
+             Bordered="true" Dense="true" MultiSelection="true" SelectedItemsChanged="@SelectedItemsChanged">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">Inventory</MudText>
+        <MudSpacer />
+        <MudButton OnClick="OpenAddItemDialog" Color="@Color.Success" Class="add-item-btn">Add Item</MudButton>
+        <MudButton Disabled="@deleteDisabled" OnClick="@removeItems" Color="@Color.Error" Class="remove-item-btn">Remove Selected Items</MudButton>
+        <MudSpacer />
+        <MudTextField @bind-Value="searchString" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+    </ToolBarContent>
+    <Columns>
+        <SelectColumn T="InventoryItem" />
+        <Column T="InventoryItem" Field="ItemName" Title="Item" IsEditable="false" />
+        <Column T="InventoryItem" Field="Quantity" Title="Quantity" IsEditable="true">
+            <EditTemplate>
+                <MudNumericField @bind-Value="context.Item.Quantity" Min="0" Label="Quantity"/>
+                <MudTextField @bind-Value="requesterUsername" Label="Requested By (username)" Variant="Variant.Text" Required="true" RequiredError="Requestor is required   "/>
+            </EditTemplate>
+        </Column>
+        <Column T="InventoryItem" Field="LastOutDate" Title="Last Added On" >
+            <CellTemplate>
+                <MudText>@context.Item.LastOutDate?.ToString("MMM dd, yyyy")</MudText>
+            </CellTemplate>
+        </Column>
+        <Column T="InventoryItem" CellClass="d-flex justify-end" Filterable="false" Sortable="false">
+            <CellTemplate>
+                <MudIconButton Size="@Size.Small" Icon="@Icons.Outlined.Add" OnClick="()=>AddQuantity(context)" />
+            </CellTemplate>
+        </Column>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="InventoryItem" />
+    </PagerContent>
+</MudDataGrid>
+
+@code {
+    [CascadingParameter]
+    private GlobalState _globalState { get; set; }
+    private List<InventoryItem> _items { get; set; }
+    private string _dialogTitle { get; set; }
+    private string _dialogOkLabel { get; set; }
+    private string _deleteItemErrorMessage { get; set; }    
+    private InventoryItem _itemModel { get; set; }
+    private string requesterUsername { get; set; }
+    private string searchString = "";
+    private InventoryItem addItem = new();
+    private List<InventoryItem> selectedItems;
+
+    private bool deleteDisabled { get; set; } = true;
+
+    private bool readOnly
+    {
+        get
+        => !(DateTime.Now.TimeOfDay < new TimeSpan(9, 0, 0) ||
+       DateTime.Now.TimeOfDay > new TimeSpan(16, 0, 0) ||
+           DateTime.Now.DayOfWeek == DayOfWeek.Saturday ||
+           DateTime.Now.DayOfWeek == DayOfWeek.Sunday);
+    }
+
+    private int itemQuantityToAdd { get; set; }
+
+    private void onQuantityChange(ChangeEventArgs args)
+    {
+        var quantity = int.Parse(args.Value.ToString());
+        itemQuantityToAdd = quantity;
+    }
+
+    async private Task AddQuantity(CellContext<InventoryItem> context)
+    {
+        DialogOptions closeOnEscapeKey = new DialogOptions() { CloseOnEscapeKey = true };
+
+        var parameters = new DialogParameters();
+
+        parameters.Add("onchange", EventCallback.Factory.Create(this, onQuantityChange));
+
+        var dialog = DialogService.Show<AddItemQuantityDialog>("Add Items", parameters, closeOnEscapeKey);
+
+        var result = await dialog.Result;
+
+        var isCancel = result.Cancelled;
+
+        if (isCancel)
+        {
+            itemQuantityToAdd = 0;
+            return;
+        }
+
+        _items = InventoryService.Update(_globalState.CurrentUser.Id, context.Item.Id, context.Item.ItemName, context.Item.Quantity+itemQuantityToAdd);
+    }
+
+    private void StartEditingItem(CellContext<InventoryItem> context)
+    {
+        if (readOnly)
+        {
+            Snackbar.Add("Items cant be editing at this time");
+        }
+        else{
+            context.Actions.StartEditingItem();
+        }
+    }
+
+    async private Task removeItems()
+    {
+        var parameters = new DialogParameters();
+        parameters.Add("ContentText", "Do you really want to delete these items?");
+        parameters.Add("ButtonText", "Delete");
+        parameters.Add("Color", Color.Error);
+
+        var options = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
+
+        var dialog = await DialogService.ShowAsync<DeleteDialog>("Delete", parameters, options);
+
+        var result = await dialog.Result;
+
+        if (result.Cancelled) return;
+
+        foreach (var item in selectedItems)
+        {
+            try
+            {
+                _items = InventoryService.Delete(_globalState.CurrentUser.Id, item.Id);
+                InventoryHistoryService.Delete(_globalState.CurrentUser.Id, item.ItemName);
+            }
+            catch { }
+        }
+
+        selectedItems = null;
+        deleteDisabled = true;
+    }
+
+    protected override void OnInitialized()
+    {
+        _items = InventoryService.GetAll(_globalState.CurrentUser.Id);
+    }
+
+    void SelectedItemsChanged(HashSet<InventoryItem> items)
+    {
+        selectedItems = items.ToList();
+        deleteDisabled = items.Count == 0;
+    }
+
+    void CommittedItemChanges(InventoryItem item)
+    {
+       // InventoryHistoryService.Create(_globalState.CurrentUser.Id, item.ItemName, item.Quantity, _globalState.CurrentUser.Username, requesterUsername);
+        _items = InventoryService.Update(_globalState.CurrentUser.Id, item.Id, item.ItemName, item.Quantity);
+        requesterUsername = "";
+    }
+
+    async private Task OpenAddItemDialog()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var parameters = new DialogParameters { ["item"] = addItem };
+
+        var dialog = await DialogService.ShowAsync<FormDialog>("Add Item", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(addItem.ItemName))
+                {
+                    throw new Exception("Item Name is required");
+                }
+
+                if (_items.Select(i => i.ItemName).Contains(addItem.ItemName))
+                {
+                    throw new Exception("This item already exists");
+                }
+
+                var prevItemQuantity = _items.FirstOrDefault(i=>i.ItemName.Equals(addItem.ItemName))?.Quantity??0;
+
+                _items = InventoryService.Create(_globalState.CurrentUser.Id, addItem.ItemName, addItem.Quantity);
+               // InventoryHistoryService.Create(_globalState.CurrentUser.Id, addItem.ItemName, Math.Abs(prevItemQuantity - addItem.Quantity), _globalState.CurrentUser.Username, _globalState.CurrentUser.Username);
+            }
+            catch (Exception e)
+            {
+                Snackbar.Add(e.Message, Severity.Error);
+            }
+            finally
+            {
+                //reset after job is done
+                addItem = new();
+            }
+        }
+    }
+
+    private bool FilterString(InventoryItem element)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.ItemName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+}
